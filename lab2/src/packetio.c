@@ -7,8 +7,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdatomic.h>
 
-#define ETHERNET_ADDRESS_SIZE 6
 #define ETHERNET_HEADER_SIZE 14
 #define ETHERNET_MIN_FRAME_SIZE 60
 #define ETHERNET_TYPE_MIN 0x0600
@@ -145,4 +145,68 @@ int receiveFrames(int id)
             return -1;
         }
     }
+}
+
+/*
+ * receiveThread - thread function for the receive thread of a device
+ */
+void *receiveThread(void *arg) {
+    /* Get device id from arg */
+    ReceiveThreadArg *rta = arg;
+    int id = *(rta->id_ptr);
+
+    /* Same as receiveFrames function */
+    struct device *device = getDevice(id);
+    if (device == NULL) {
+        fprintf(stderr, "Receive thread, device id=%d: device not found\n", id);
+        return -1;
+    }
+
+    if (receiver == NULL) {
+        fprintf(stderr, "Receive Thread, device id=%d: callback not set\n", id);
+        return -1;
+    }
+
+    for (;;) {
+        struct pcap_pkthdr *header = NULL;
+        const unsigned char *frame = NULL;
+        int result = pcap_next_ex(device->handle, &header, &frame);
+
+        if (!atomic_load(rta->running_ptr)) {
+            break;
+        }
+
+        if (result == 0) {
+            continue;
+        }
+
+        if (result == PCAP_ERROR_BREAK) {
+            return NULL;
+        }
+
+        if (result == PCAP_ERROR) {
+            fprintf(stderr, "pcap_next_ex(%s): %s\n",
+                    device->name, pcap_geterr(device->handle));
+            return -1;
+        }
+
+        if (header->caplen < ETHERNET_HEADER_SIZE ||
+            header->caplen < header->len) {
+            continue;
+        }
+
+        uint16_t network_type;
+        memcpy(&network_type, frame + 2 * ETHERNET_ADDRESS_SIZE,
+               sizeof(network_type));
+        if (ntohs(network_type) < ETHERNET_TYPE_MIN) {
+            continue;
+        }
+
+        if (receiver(frame, (int)header->caplen, id) < 0) {
+            fprintf(stderr, "Receive thread, device id=%d: callback error\n", id);
+            return -1;
+        }
+    }
+
+    return NULL;
 }

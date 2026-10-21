@@ -75,6 +75,7 @@ static int queryDeviceInfo(const char *device, unsigned char mac[6], int *mtu)
 
 /*
  * addDevice - register an Ethernet device after all initialization succeeds
+ *             return the device's id
  */
 int addDevice(const char *device)
 {

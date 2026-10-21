@@ -2,6 +2,7 @@
 #define NETSTACK_DEVICE_H
 
 #include <net/if.h>
+#include <netinet/in.h>
 #include <pcap/pcap.h>
 
 #define MAX_DEVICES 32
